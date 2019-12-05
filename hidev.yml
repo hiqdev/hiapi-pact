@@ -1,0 +1,7 @@
+package:
+    type:           project
+    name:           hiapi-pact
+    title:          HiAPI PACT
+    headline:       HiAPI PACT
+    keywords:       hiapi, pact
+    description:    under development
