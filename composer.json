@@ -7,9 +7,12 @@
     "description": "HiAPI pact",
     "license": "MIT",
     "require": {
-        "pact-foundation/pact-php": "^5.0"
+        "hiqdev/hiapi-legacy": "dev-master",
+        "hiqdev/yii2-hiart": "dev-master",
+        "hiqdev/hipanel-hiart": "dev-master"
     },
     "require-dev": {
+        "pact-foundation/pact-php": "^5.0",
         "phpunit/phpunit": "^7.1",
         "mockery/mockery": "^1.0",
         "hiqdev/hidev-php": "dev-master",
@@ -17,7 +20,7 @@
     },
     "autoload": {
         "psr-4": {
-            "hiapi\\pact\\": "src"
+            "hiapi\\pact\\tests\\": "tests"
         }
     },
     "minimum-stability": "dev"

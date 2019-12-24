@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit backupGlobals="false" backupStaticAttributes="false" colors="true" convertErrorsToExceptions="true"
+         convertNoticesToExceptions="true" convertWarningsToExceptions="true" processIsolation="false"
+         stopOnFailure="false" bootstrap="tests/_bootstrap.php">
+    <testsuites>
+        <testsuite name="pact">
+            <directory>./tests/consumer</directory>
+        </testsuite>
+    </testsuites>
+    <filter>
+        <whitelist addUncoveredFilesFromWhitelist="true">
+            <directory suffix=".php">./src/</directory>
+        </whitelist>
+    </filter>
+    <listeners>
+        <listener class="PhpPact\Consumer\Listener\PactTestListener">
+            <arguments>
+                <array>
+                    <element key="0">
+                        <string>pact</string>
+                    </element>
+                </array>
+            </arguments>
+        </listener>
+    </listeners>
+    <php>
+        <env name="PACT_MOCK_SERVER_HOST" value="localhost"/>
+        <env name="PACT_MOCK_SERVER_PORT" value="7200"/>
+        <env name="PACT_CONSUMER_NAME" value="hipanel"/>
+        <env name="PACT_CONSUMER_VERSION" value="1.0.0"/>
+        <env name="PACT_CONSUMER_TAG" value="master"/>
+        <env name="PACT_PROVIDER_NAME" value="hiapi"/>
+        <env name="PACT_OUTPUT_DIR" value="./tests/pacts"/>
+        <env name="PACT_MOCK_SERVER_HEALTH_CHECK_TIMEOUT" value="100"/>
+    </php>
+</phpunit>
