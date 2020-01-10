@@ -28,7 +28,7 @@ class HiPanelVerifyTest extends ProviderTestCase
         $hasException = false;
         $exceptionDetails = '';
         try {
-            $file = Yii::getAlias(self::PACT_DIR) . 'hipanel-hiapi.json';
+            $file = Yii::getAlias(self::PACT_DIR . '/hipanel-hiapi.json');
 
             // could be build an object mapper to make this easier
             $verifier = new Verifier($config);
