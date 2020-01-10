@@ -10,16 +10,4 @@ class ClientModuleTest extends ConsumerTestCase
     {
         $this->runInteraction();
     }
-
-    public function dataProvider(): array
-    {
-        return [
-            'clientSearch' => [
-                [
-                    'login' => 'tofid',
-                ],
-                '123',
-            ],
-        ];
-    }
 }

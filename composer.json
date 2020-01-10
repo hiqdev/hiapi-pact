@@ -23,5 +23,10 @@
             "hiapi\\pact\\tests\\": "tests"
         }
     },
+    "extra": {
+        "config-plugin": {
+            "params": "config/params.php"
+        }
+    },
     "minimum-stability": "dev"
 }

@@ -3,7 +3,6 @@
 namespace hiapi\pact\tests;
 
 use Exception;
-use Faker\Factory;
 use Generator;
 use hiapi\exceptions\ConfigurationException;
 use hiapi\legacy\lib\apiCommand;
@@ -12,22 +11,29 @@ use hiapi\legacy\lib\mrdpBase;
 use hiapi\legacy\lib\mrdpCommand;
 use hipanel\hiart\Connection;
 use hiqdev\hiart\guzzle\Request;
-use hiqdev\hiart\RequestErrorException;
 use hiqdev\hiart\RequestInterface;
 use hiqdev\yii\compat\yii;
 use PhpPact\Consumer\InteractionBuilder;
 use PhpPact\Consumer\Matcher\Matcher;
 use PhpPact\Consumer\Model\ConsumerRequest;
 use PhpPact\Consumer\Model\ProviderResponse;
+use PhpPact\Standalone\Exception\MissingEnvVariableException;
 use PhpPact\Standalone\MockService\MockServerConfigInterface;
 use PhpPact\Standalone\MockService\MockServerEnvConfig;
 use ReflectionClass;
 use ReflectionException;
+use StdClass;
 use yii\di\Container;
 use yii\helpers\StringHelper;
 
+use function getenv;
+
 abstract class ConsumerTestCase extends \PHPUnit\Framework\TestCase
 {
+    /**
+     * @var int
+     */
+    public $batchSize = 5;
     /**
      * @var Container
      */
@@ -44,10 +50,6 @@ abstract class ConsumerTestCase extends \PHPUnit\Framework\TestCase
      * @var string
      */
     private $moduleName;
-    /**
-     * @var \Faker\Generator
-     */
-    protected $faker;
     /**
      * @var array
      */
@@ -79,7 +81,6 @@ abstract class ConsumerTestCase extends \PHPUnit\Framework\TestCase
     protected function setUp(): void
     {
         $this->di = yii::getContainer();
-        $this->faker = Factory::create();
         $this->base = $this->di->get(mrdpBase::class);
         $this->setServerEnvConfig(new MockServerEnvConfig());
         $this->serverEnvConfig->setPactFileWriteMode('merge');
@@ -93,8 +94,6 @@ abstract class ConsumerTestCase extends \PHPUnit\Framework\TestCase
             ]
         );
     }
-
-    abstract public function dataProvider(): array;
 
     public function setModuleName(string $moduleName): void
     {
@@ -114,54 +113,61 @@ abstract class ConsumerTestCase extends \PHPUnit\Framework\TestCase
         return strtolower(substr($className, 0, strpos($className, 'Module')));
     }
 
-    /**
-     * @throws RequestErrorException
-     */
-    protected function runInteraction(array $data = []): void
+    protected function runInteraction(): void
     {
-        $requests = [];
+        $interactionsHeap = [];
         $commands = iterator_to_array($this->getModuleCommands());
         $this->assertNotEmpty($commands);
-        $commands = array_slice($commands, 0, 10);
 
-        foreach ($commands as $name => $command) {
-            $requests[$name] = $this->buildRequest($command, $this->buildBody($command));
+        foreach ($commands as $commandName => $command) {
+            if ($examples = $command->getExamples()) {
+                foreach ($examples as $example) {
+                    $service = new StdClass();
+                    $service->request = $this->buildRequest($command, $example->getInput());
+                    $service->response = $this->buildMatcher($command, $example->getOutput());
+                    $interactionsHeap[$commandName][] = $service;
+                }
+            }
         }
 
         $mockService = new InteractionBuilder($this->serverEnvConfig);
 
-        foreach ($requests as $commandName => $request) {
-            $consumerRequest = $this->buildConsumerRequest($request);
-            $matcher = $this->buildMatcher($commands[$commandName], $request->getQuery()->body);
-            $providerResponse = $this->buildProviderResponse($matcher);
-            $mockService
-                ->given($commandName)
-                ->uponReceiving("To get request from `{$commandName}`")
-                ->with($consumerRequest)
-                ->willRespondWith($providerResponse);
-            $mockServiceResponse = $request->send();
-            $this->assertEquals(
-                '200',
-                $mockServiceResponse->getStatusCode(),
-                'Let\'s make sure we have an OK response'
-            );
-            $body = (string)$mockServiceResponse->getBody();
-            $this->assertTrue((json_decode($body) ? true : false), 'Expect the JSON to be decoded without error');
-            $hasException = false;
+        foreach (array_chunk($interactionsHeap, $this->batchSize, true) as $interactions) {
+            foreach ($interactions as $commandName => $interaction) {
+                foreach ($interaction as $service) {
+                    $consumerRequest = $this->buildConsumerRequest($service->request);
+                    $providerResponse = $this->buildProviderResponse($service->response);
+                    $mockService
+                        ->given($commandName)
+                        ->uponReceiving("To get request from `{$commandName}`")
+                        ->with($consumerRequest)
+                        ->willRespondWith($providerResponse);
+                    $mockServiceResponse = $service->request->send();
+                    $this->assertEquals(
+                        '200',
+                        $mockServiceResponse->getStatusCode(),
+                        'Let\'s make sure we have an OK response'
+                    );
+                    $body = (string)$mockServiceResponse->getBody();
+                    $this->assertTrue(
+                        (json_decode($body) ? true : false),
+                        'Expect the JSON to be decoded without error'
+                    );
+                    $hasException = false;
 
-            try {
-                $mockService->verify();
-            } catch (Exception $e) {
-                $hasException = true;
+                    try {
+                        $mockService->verify();
+                    } catch (Exception $e) {
+                        $hasException = true;
+                    }
+
+                    $this->assertFalse($hasException, 'We expect the pacts to validate');
+                }
             }
-
-            $this->assertFalse($hasException, 'We expect the pacts to validate');
         }
-
-        $this->assertFalse(false, 'We expect the pacts to validate');
     }
 
-    protected function buildConsumerRequest(Request $request): ConsumerRequest
+    protected function buildConsumerRequest(RequestInterface $request): ConsumerRequest
     {
         return (new ConsumerRequest())
             ->setMethod($request->getMethod())
@@ -206,117 +212,38 @@ abstract class ConsumerTestCase extends \PHPUnit\Framework\TestCase
 
     protected function buildMatcher(apiCommand $command, array $data): array
     {
-        $object = (object)$data;
+        $output = (object)$data;
         $matcher = new Matcher();
         [$name,] = arr::camelSplit($command->command, 2);
 
-        return StringHelper::endsWith($name, 's') ? $matcher->eachLike($object) : $matcher->like($object);
+        return StringHelper::endsWith($name, 's') ? $matcher->eachLike($output) : $matcher->like($output);
     }
 
     protected function buildRequest(mrdpCommand $command, array $body): RequestInterface
     {
+        $auth_login = getenv('AUTH_LOGIN');
+        $auth_password = getenv('AUTH_PASSWORD');
+        if (empty($auth_login)) {
+            throw new MissingEnvVariableException('AUTH_LOGIN');
+        }
+        if (empty($auth_password)) {
+            throw new MissingEnvVariableException('AUTH_PASSWORD');
+        }
         return $this->connection->callWithDisabledAuth(
-            function () use ($command, $body) {
+            function () use ($command, $body, $auth_login, $auth_password) {
                 $request = $this->connection
                     ->createCommand()
                     ->db
                     ->getQueryBuilder()
-                    ->perform($command->command, null, $body);
+                    ->perform(
+                        $command->command,
+                        null,
+                        array_merge($body, compact('auth_login', 'auth_password'))
+                    );
                 $request->build();
 
                 return $request;
             }
         );
-    }
-
-    private function getAttributes(apiCommand $command): array
-    {
-        $properties = [];
-        $allFields = $command->wise_search ? $command->getModule($command->module)->getFields() : $command->fields;
-        foreach ($allFields as $fields => $checks) {
-            if ($fields === 'arrayof') {
-                $relatedCommand = $this->base->getCommand($checks);
-
-                return $this->getAttributes($relatedCommand);
-            }
-            $props = [];
-            foreach (arr::csplit($fields) as $field) {
-                if (strpos($field, '->') !== false) {
-                    [$old, $new] = explode('->', $field, 2);
-                    $props[] = $new;
-                } else {
-                    $props[] = $field;
-                }
-            }
-
-            $props = array_unique($props);
-            $checksArray = arr::csplit($checks);
-            foreach ($props as $prop) {
-                if (empty($checksArray)) {
-                    $properties[$prop] = 'string';
-                    continue;
-                }
-                foreach ($checksArray as $i => $func) {
-                    if ($func === 'self') {
-                        unset($checksArray[$i]);
-                        $checksArray[] = $prop;
-                    }
-                }
-                if (count($checksArray) > 1) {
-                    $properties[$prop] = array_map(
-                        static function (string $check) {
-                            return $check;
-                        },
-                        $checksArray
-                    );
-                } else {
-                    $properties[$prop] = [reset($checksArray)];
-                }
-            }
-        }
-
-        return $properties;
-    }
-
-    private function fake(array $attributes): array
-    {
-        $result = [];
-        $faker = [
-            'randomNumber' => ['variants' => ['id']],
-            'word' => ['variants' => ['label', 'ref', 'fref']],
-            'userName' => ['variants' => ['login', 'client', 'seller', 'buyer']],
-            'freeEmail' => ['variants' => ['email']],
-            'password' => ['variants' => ['password']],
-            'boolean' => ['args' => [50], 'variants' => ['bool']],
-            'randomFloat' => ['variants' => ['money']],
-            'tollFreePhoneNumber' => ['variants' => ['phone']],
-            'url' => ['variants' => ['url']],
-        ];
-
-        foreach ($attributes as $name => $meta) {
-            $checks = $meta['check'] ? arr::csplit($meta['check']) : $meta;
-            foreach ($checks as $check) {
-                foreach ($faker as $fake => $data) {
-                    $bulk = false;
-                    if (StringHelper::endsWith($check, 's')) {
-                        $check = rtrim($check, 's');
-                        $bulk = true;
-                    }
-                    if (in_array($check, $data['variants'], true)) {
-                        $value = call_user_func([$this->faker, $fake], $data['args']);
-                        $result[$name] = $bulk ? [$value] : $value;
-                    }
-                }
-            }
-        }
-
-        return $result;
-    }
-
-    private function buildBody(mrdpCommand $command): array
-    {
-        $attributes = $this->getAttributes($command);
-
-        return $this->fake($attributes);
     }
 }

@@ -11,7 +11,7 @@ use Yii;
 
 class HiPanelVerifyTest extends ProviderTestCase
 {
-    const PACT_DIR = "@hiapi/pact/tests/pacts/";
+    public const PACT_DIR = "@hiapi/pact/tests/pacts/";
 
     public function testHiPanel()
     {
@@ -19,7 +19,7 @@ class HiPanelVerifyTest extends ProviderTestCase
 
         $config = new VerifierConfig();
         $config
-            ->setProviderName('HiPanel') // Providers name to fetch.
+            ->setProviderName('HiPanel')
             ->setProviderBaseUrl(new Uri($url)) // URL of the Provider.
             ->addCustomProviderHeader('X-Json-Prefer-Array', '1')
             ->setBrokerUri(new Uri('http://localhost'));

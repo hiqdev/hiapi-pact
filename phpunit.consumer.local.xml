@@ -24,6 +24,8 @@
         </listener>
     </listeners>
     <php>
+        <env name="AUTH_LOGIN" value=""/>
+        <env name="AUTH_PASSWORD" value=""/>
         <env name="PACT_MOCK_SERVER_HOST" value="localhost"/>
         <env name="PACT_MOCK_SERVER_PORT" value="7200"/>
         <env name="PACT_CONSUMER_NAME" value="hipanel"/>
@@ -32,5 +34,6 @@
         <env name="PACT_PROVIDER_NAME" value="hiapi"/>
         <env name="PACT_OUTPUT_DIR" value="./tests/pacts"/>
         <env name="PACT_MOCK_SERVER_HEALTH_CHECK_TIMEOUT" value="100"/>
+        <env name="PACT_FILE_WRITE_MODE" value="merge"/>
     </php>
 </phpunit>
